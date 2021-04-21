@@ -3,7 +3,11 @@ import hiive.mdptoolbox.example
 import hiive.mdptoolbox.mdp
 from icecream import ic
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns
+
+import time
 
 # Constants
 PROB_WILDFIRE = 0.9
@@ -27,7 +31,7 @@ def forest_val_iter(states, seed=42, sparse=False, gamma=GAMMA):
     """
     np.random.seed(seed)
     P, R = mdptoolbox.example.forest(S=states, p=PROB_WILDFIRE)
-    print(f'Beginning policy iteration for the forest')
+    print(f'Beginning policy iteration for the forest for {states} states')
     val_iter = mdptoolbox.mdp.PolicyIteration(P, R, gamma, max_iter=MAX_ITERS_VAL)
     print(f'Ending policy iteration for the forest')
 
@@ -44,7 +48,7 @@ def forest_pol_iter(states, seed=42, sparse=False, gamma=GAMMA):
     """
     np.random.seed(seed)
     P, R = mdptoolbox.example.forest(S=states, p=PROB_WILDFIRE)
-    print(f'Beginning value iteration for the forest')
+    print(f'Beginning value iteration for the forest for {states} states')
     pol_iter = mdptoolbox.mdp.ValueIteration(P, R, gamma, max_iter=MAX_ITERS_POL)
     print(f'Ending value iteration for the forest')
 
@@ -61,7 +65,7 @@ def forest_q_learning(states, seed=42, sparse=False, gamma=GAMMA):
     """
     np.random.seed(seed)
     P, R = mdptoolbox.example.forest(S=states, p=PROB_WILDFIRE)
-    print(f'Beginning Q-learning for the forest')
+    print(f'Beginning Q-learning for the forest for {states} states')
     ql = mdptoolbox.mdp.QLearning(P,
                                   R,
                                   gamma,
@@ -77,6 +81,9 @@ def forest_q_learning(states, seed=42, sparse=False, gamma=GAMMA):
                      ql.policy,
                      states,
                      seed)
+    # Create the charts for the different runs
+    build_forest_charts(P, R)
+
     print('Done')
     return ql, perf
 
@@ -108,6 +115,40 @@ def find_perf(P, R, policy, no_states, seed=42, exercises=100):
     result = np.mean(totals)
 
     return result
+
+def build_forest_charts(P, R, seed=42, exercises=100):
+    """Build various charts for each of the algorithms for the forest MDP.
+
+    :param P: Transitions
+    :param R: Rewards
+    :param seed: Random seed used to generate the forest
+    :param tries: The number of trials
+    :return:
+    """
+    # How many states to use for states and times vs rewards
+    chart_data = np.array([10, 20, 40, 80, 160, 320, 640])
+    iteration_data = []
+    perf_data = []
+    time_data = []
+    for state in chart_data:
+        tic = time.perf_counter()
+        val_res, perf = forest_q_learning(state)
+        toc = time.perf_counter()
+        iteration_data.append(val_res.run_stats[-1]['Iteration'])
+        perf_data.append(perf)
+        time_data.append(toc-tic)
+
+    df_for_ql = pd.DataFrame(columns=['Iterations', 'Rewards', 'Time(seconds)'],
+                      data = np.hstack((iteration_data[:, None],
+                                        perf_data[:, None],
+                                        time_data[:, None])))
+
+    sns.lineplot(x='Iterations', y='Rewards', data=df_for_ql)
+    sns.lineplot(x='Iterations', y='time_data', data=df_for_ql)
+
+    ic(chart_data)
+
+
 
 if __name__ == '__main__':
     result, perf = forest_q_learning(100)
