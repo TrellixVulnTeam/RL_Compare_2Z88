@@ -9,6 +9,7 @@ import seaborn as sns
 
 import time
 
+
 # Constants
 PROB_WILDFIRE = 0.9
 MAX_ITERS_VAL = 1500
@@ -19,8 +20,10 @@ ALPHA_MIN = 0.01
 EPSILON_MIN = 0.1
 ALPHA_DECAY = 0.999
 EPSILON_DECAY = 0.999
+SEED = 42
+STATES_TO_TEST = 640
 
-def forest_val_iter(states, seed=42, sparse=False, gamma=GAMMA):
+def forest_val_iter(sparse=False, gamma=GAMMA):
     """Runs the value iteration algorithm on the forest example.
 
     :param states: No. of states or years to run the simulation.
@@ -29,7 +32,6 @@ def forest_val_iter(states, seed=42, sparse=False, gamma=GAMMA):
     format.
     :return: val_iter which contains P and R
     """
-    np.random.seed(seed)
     P, R = mdptoolbox.example.forest(S=states, p=PROB_WILDFIRE)
     print(f'Beginning policy iteration for the forest for {states} states')
     val_iter = mdptoolbox.mdp.PolicyIteration(P, R, gamma, max_iter=MAX_ITERS_VAL)
@@ -37,7 +39,7 @@ def forest_val_iter(states, seed=42, sparse=False, gamma=GAMMA):
 
     return val_iter
 
-def forest_pol_iter(states, seed=42, sparse=False, gamma=GAMMA):
+def forest_pol_iter(sparse=False, gamma=GAMMA):
     """Runs the policy iteration algorithm on the forest example.
 
     :param states: No. of states or years to run the simulation.
@@ -46,15 +48,14 @@ def forest_pol_iter(states, seed=42, sparse=False, gamma=GAMMA):
     format.
     :return: val_iter which contains P and R
     """
-    np.random.seed(seed)
-    P, R = mdptoolbox.example.forest(S=states, p=PROB_WILDFIRE)
+    # np.random.seed(seed)
     print(f'Beginning value iteration for the forest for {states} states')
     pol_iter = mdptoolbox.mdp.ValueIteration(P, R, gamma, max_iter=MAX_ITERS_POL)
     print(f'Ending value iteration for the forest')
 
     return pol_iter
 
-def forest_q_learning(states, seed=42, sparse=False, gamma=GAMMA):
+def forest_q_learning(P, R, states=10, sparse=False, gamma=GAMMA):
     """Runs the q_learning algorithm on the forest example.
 
     :param states: No. of states or years to run the simulation.
@@ -63,8 +64,8 @@ def forest_q_learning(states, seed=42, sparse=False, gamma=GAMMA):
     format.
     :return: val_iter which contains P and R
     """
-    np.random.seed(seed)
-    P, R = mdptoolbox.example.forest(S=states, p=PROB_WILDFIRE)
+    # np.random.seed(seed)
+    # P, R = mdptoolbox.example.forest(S=states, p=PROB_WILDFIRE)
     print(f'Beginning Q-learning for the forest for {states} states')
     ql = mdptoolbox.mdp.QLearning(P,
                                   R,
@@ -79,15 +80,12 @@ def forest_q_learning(states, seed=42, sparse=False, gamma=GAMMA):
     perf = find_perf(P,
                      R,
                      ql.policy,
-                     states,
-                     seed)
-    # Create the charts for the different runs
-    build_forest_charts(P, R)
+                     states)
 
     print('Done')
     return ql, perf
 
-def find_perf(P, R, policy, no_states, seed=42, exercises=100):
+def find_perf(P, R, policy, no_states, exercises=100):
     """Finds the average reward for the policy.
 
     :param P: Transitions
@@ -98,7 +96,7 @@ def find_perf(P, R, policy, no_states, seed=42, exercises=100):
     :param tries: The number of trials
     :return: Average reward for the policy.
     """
-    np.random.seed(seed)
+    # np.random.seed(seed)
     print('Finding the average reward...')
     totals = []
     for _ in range(exercises):
@@ -116,7 +114,7 @@ def find_perf(P, R, policy, no_states, seed=42, exercises=100):
 
     return result
 
-def build_forest_charts(P, R, seed=42, exercises=100):
+def build_forest_charts(exercises=100):
     """Build various charts for each of the algorithms for the forest MDP.
 
     :param P: Transitions
@@ -131,28 +129,37 @@ def build_forest_charts(P, R, seed=42, exercises=100):
     perf_data = []
     time_data = []
     for state in chart_data:
+        np.random.seed(SEED)
+        P, R = mdptoolbox.example.forest(S=state, p=PROB_WILDFIRE)
         tic = time.perf_counter()
-        val_res, perf = forest_q_learning(state)
+        val_res, perf = forest_q_learning(P, R, state)
         toc = time.perf_counter()
         iteration_data.append(val_res.run_stats[-1]['Iteration'])
         perf_data.append(perf)
         time_data.append(toc-tic)
 
-    df_for_ql = pd.DataFrame(columns=['Iterations', 'Rewards', 'Time(seconds)'],
-                      data = np.hstack((iteration_data[:, None],
-                                        perf_data[:, None],
-                                        time_data[:, None])))
+    df_for_ql = pd.DataFrame(data=[chart_data, iteration_data, perf_data, time_data]).transpose()
+    df_for_ql.columns=['Forest Size', 'Iterations', 'Rewards', 'Time(seconds)']
+                            #  np.hstack((iteration_data[:, None],
+                            #             perf_data[:, None],
+                            #             time_data[:, None])))
 
-    sns.lineplot(x='Iterations', y='Rewards', data=df_for_ql)
-    sns.lineplot(x='Iterations', y='time_data', data=df_for_ql)
-
+    sns.lineplot(x='Forest Size', y='Rewards', data=df_for_ql)
+    plt.show()
+    sns.lineplot(x='Forest Size', y='Time(seconds)', data=df_for_ql)
+    plt.show()
+    sns.lineplot(x='Forest Size', y='Iterations', data=df_for_ql)
+    plt.show()
     ic(chart_data)
 
 
 
 if __name__ == '__main__':
-    result, perf = forest_q_learning(100)
-    print(f'Time for Q-Learning: {result.time}')
-    print(f'Error for Q-Learning: {result.error_mean}')
-    print(f'Run Stats\n---------\n{result.run_stats[-1]}')
-    print(f'Average reward:{perf}')
+    # np.random.seed(SEED)
+    # P, R = mdptoolbox.example.forest(S=STATES_TO_TEST, p=PROB_WILDFIRE)
+    # result, perf = forest_q_learning(100)
+    # print(f'Time for Q-Learning: {result.time}')
+    # print(f'Error for Q-Learning: {result.error_mean}')
+    # print(f'Run Stats\n---------\n{result.run_stats[-1]}')
+    # print(f'Average reward:{perf}')
+    build_forest_charts()
