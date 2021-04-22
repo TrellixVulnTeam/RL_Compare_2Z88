@@ -9,9 +9,8 @@ import seaborn as sns
 
 import time
 
-
 # Constants
-PROB_WILDFIRE = 0.9
+PROB_WILDFIRE = 0.01
 MAX_ITERS_VAL = 1500
 MAX_ITERS_POL = 1500
 GAMMA = 0.99
@@ -23,9 +22,11 @@ EPSILON_DECAY = 0.999
 SEED = 42
 STATES_TO_TEST = 640
 
-def forest_val_iter(sparse=False, gamma=GAMMA):
+def forest_val_iter(P, R, states, sparse=False, gamma=GAMMA):
     """Runs the value iteration algorithm on the forest example.
 
+    :param P: Transitions
+    :param R: Rewards
     :param states: No. of states or years to run the simulation.
     :param seed: Random seed used to generate the forest
     :param sparse: "If true, the matrices will be returned in their sparse
@@ -35,13 +36,22 @@ def forest_val_iter(sparse=False, gamma=GAMMA):
     P, R = mdptoolbox.example.forest(S=states, p=PROB_WILDFIRE)
     print(f'Beginning policy iteration for the forest for {states} states')
     val_iter = mdptoolbox.mdp.PolicyIteration(P, R, gamma, max_iter=MAX_ITERS_VAL)
+    val_iter.run()
     print(f'Ending policy iteration for the forest')
+    achieve = find_achieve(P,
+                           R,
+                           val_iter.policy,
+                           states)
+
+    return val_iter, achieve
 
     return val_iter
 
-def forest_pol_iter(sparse=False, gamma=GAMMA):
+def forest_pol_iter(P, R, states=10, sparse=False, gamma=GAMMA):
     """Runs the policy iteration algorithm on the forest example.
 
+    :param P: Transitions
+    :param R: Rewards
     :param states: No. of states or years to run the simulation.
     :param seed: Random seed used to generate the forest
     :param sparse: "If true, the matrices will be returned in their sparse
@@ -51,13 +61,20 @@ def forest_pol_iter(sparse=False, gamma=GAMMA):
     # np.random.seed(seed)
     print(f'Beginning value iteration for the forest for {states} states')
     pol_iter = mdptoolbox.mdp.ValueIteration(P, R, gamma, max_iter=MAX_ITERS_POL)
+    pol_iter.run()
     print(f'Ending value iteration for the forest')
+    achieve = find_achieve(P,
+                           R,
+                           pol_iter.policy,
+                           states)
 
-    return pol_iter
+    return pol_iter, achieve
 
 def forest_q_learning(P, R, states=10, sparse=False, gamma=GAMMA):
     """Runs the q_learning algorithm on the forest example.
 
+    :param P: Transitions
+    :param R: Rewards
     :param states: No. of states or years to run the simulation.
     :param seed: Random seed used to generate the forest
     :param sparse: "If true, the matrices will be returned in their sparse
@@ -77,15 +94,15 @@ def forest_q_learning(P, R, states=10, sparse=False, gamma=GAMMA):
                                   epsilon_decay=EPSILON_DECAY)
     ql.run()
     print(f'Ending Q-learning for the forest')
-    perf = find_perf(P,
-                     R,
-                     ql.policy,
-                     states)
+    achieve = find_achieve(P,
+                           R,
+                           ql.policy,
+                           states)
 
     print('Done')
-    return ql, perf
+    return ql, achieve
 
-def find_perf(P, R, policy, no_states, exercises=100):
+def find_achieve(P, R, policy, no_states, exercises=100):
     """Finds the average reward for the policy.
 
     :param P: Transitions
@@ -114,44 +131,94 @@ def find_perf(P, R, policy, no_states, exercises=100):
 
     return result
 
-def build_forest_charts(exercises=100):
-    """Build various charts for each of the algorithms for the forest MDP.
+def build_forest_iter_charts(exercises=100):
+    """Build various charts for each of the iteration algorithms for the
+    forest MDP.
 
-    :param P: Transitions
-    :param R: Rewards
-    :param seed: Random seed used to generate the forest
     :param tries: The number of trials
-    :return:
+    :return: None
     """
     # How many states to use for states and times vs rewards
-    chart_data = np.array([10, 20, 40, 80, 160, 320, 640])
+    states = [2, 5, 10, 20, 30, 40, 50, 75, 100, 200, 300, 400, 500, 750, 1000]
+
+    # Create data for value iteration
     iteration_data = []
-    perf_data = []
+    achieve_data = []
     time_data = []
-    for state in chart_data:
-        np.random.seed(SEED)
-        P, R = mdptoolbox.example.forest(S=state, p=PROB_WILDFIRE)
-        tic = time.perf_counter()
-        val_res, perf = forest_q_learning(P, R, state)
-        toc = time.perf_counter()
-        iteration_data.append(val_res.run_stats[-1]['Iteration'])
-        perf_data.append(perf)
-        time_data.append(toc-tic)
+    alg_name_data = []
+    states_data=[]
 
-    df_for_ql = pd.DataFrame(data=[chart_data, iteration_data, perf_data, time_data]).transpose()
-    df_for_ql.columns=['Forest Size', 'Iterations', 'Rewards', 'Time(seconds)']
-                            #  np.hstack((iteration_data[:, None],
-                            #             perf_data[:, None],
-                            #             time_data[:, None])))
+    # Loop through both value and policy iteration algorithms
+    for algorithm, alg_name in [(forest_val_iter, 'Value Iteration'),
+                                (forest_pol_iter, 'Policy Iteration')]:
+        # Loop through different states running value iteration for each and
+        # grabbing the different statistics.
+        for state in states:
+            np.random.seed(SEED)
+            P, R = mdptoolbox.example.forest(S=state, p=PROB_WILDFIRE)
+            tic = time.perf_counter()
+            result, achieve = algorithm(P, R, state)
+            toc = time.perf_counter()
+            iteration_data.append(int(result.run_stats[-1]['Iteration']))
+            achieve_data.append(float(achieve))
+            time_data.append(float(toc-tic))
+            alg_name_data.append(alg_name)
+            states_data.append(state)
+            # alg_name_data.append(alg_name==forest_val_iter)
+        print(f'Results for Value Iteration\n----------------------\n\n')
+        print(result.run_stats[-1])
+        print(f'Average Total Reward = {achieve}')
 
-    sns.lineplot(x='Forest Size', y='Rewards', data=df_for_ql)
-    plt.show()
-    sns.lineplot(x='Forest Size', y='Time(seconds)', data=df_for_ql)
-    plt.show()
-    sns.lineplot(x='Forest Size', y='Iterations', data=df_for_ql)
-    plt.show()
-    ic(chart_data)
+        # df_for_vl = pd.DataFrame(data = [[1,2,3,4],
+        #                                  [1, 2, 3, 4],
+        #                                  [1, 2, 3, 4],
+        #                                  [1, 2, 3, 4],
+        #                                  [1, 2, 3, 4],
+        #                                  ]).transpose()
+        df_for_vl = pd.DataFrame(data={'Forest Size': states_data,
+                                       'Iterations': iteration_data,
+                                       'Rewards': achieve_data,
+                                       'Time(seconds)': time_data,
+                                       'Algorithm': alg_name_data})
+        # df_for_vl.columns=['Forest Size', 'Iterations', 'Rewards', 'Time(seconds)', 'Algorithm']
 
+    # Forest size vs. Rewards plots
+    # fig, ax = plt.subplots(figsize=(8, 6))
+    ic(df_for_vl.dtypes)
+
+
+    # sns.lineplot(x='Iterations', y='Rewards', data=df_for_vl)
+
+
+
+    sns.lineplot(x='Time(seconds)',
+                 y='Iterations',
+                 data=df_for_vl,
+                 hue='Algorithm',
+                 palette='pastel')
+    sns.set_style('dark')
+
+    plt.title(f'Forest Size vs Reward', fontsize=13)
+    plt.legend(loc='upper right')
+    plt.show()
+
+        # Forest size vs. Time plots
+        # bx = sns.lineplot(x='Forest Size',
+        #                   y='Time(seconds)',
+        #                   data=df_for_ql)
+        # bx.set_title=(f'Forest Size vs Time for {alg_name}')
+        # ax.legend(loc='upper right')
+        # plt.show()
+
+        # Forest size vs. iteration plots
+        # cx = sns.lineplot(x='Forest Size',
+        #                   y='Iterations',
+        #                   data=df_for_ql)
+        # cx.set_title=(f'Forest Size vs Iterations for {alg_name}')
+        # ax.legend(loc='upper right')
+        # plt.show()
+
+    ic(states)
 
 
 if __name__ == '__main__':
@@ -162,4 +229,4 @@ if __name__ == '__main__':
     # print(f'Error for Q-Learning: {result.error_mean}')
     # print(f'Run Stats\n---------\n{result.run_stats[-1]}')
     # print(f'Average reward:{perf}')
-    build_forest_charts()
+    build_forest_iter_charts()

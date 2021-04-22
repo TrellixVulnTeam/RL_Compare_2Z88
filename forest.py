@@ -125,7 +125,5 @@ def get_performance_discrete(policy, P, R, num_trials=100):
     return np.mean(results)
 
 if __name__ == '__main__':
-    ql = q_learning(P, R)
-    print(ql.run_stats[-1])
-    print(ql.time)
-    get_performance_discrete(ql.policy, P, R)
+    run()
+    iteration_plots()
