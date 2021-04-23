@@ -1,29 +1,35 @@
 from icecream import ic
 import gym
+from gym.envs.toy_text.frozen_lake import generate_random_map
 import numpy as np
 
 import time
 
 # Constants
-GAMMA = 0.9
-LIMIT = 1e-15
-NO_OF_ITERS = 200000
+GAMMA = 1.0
+LIMIT = 1e-20
+NO_OF_ITERS = 100000
 FROZEN_LAKE = 'FrozenLake-v0'
 SR_TRANS_PROB = 0
 SR_NEXT_STATE = 1
 SR_REW_PROB = 2
 
-def val_iter(gamma, environ_name):
+def val_iter(map, gamma, environ_name):
     """Value iteration
 
+    :param map: The map to be used
     :param gamma: Discount factor from 0 to 1
     :param environ_name: Name used in Open AI gym
     :return: Latest value table
     """
-    environ = gym.make(environ_name)
+
+    environ = gym.make(environ_name,
+                       desc=map,
+                       is_slippery=True)
     no_of_states = environ.observation_space.n
     no_of_actions = environ.action_space.n
-    val_table = np.zeros(no_of_states)
+    val_table = np.zeros(NO_OF_ITERS)
+
     print(f'Running value iteration for {environ_name}')
     ## Loop through the iterations set
     for iters in range(NO_OF_ITERS):
@@ -40,9 +46,9 @@ def val_iter(gamma, environ_name):
                 # ... and for each action find all the Q values.
                 for state_reward in environ.P[state][action]:
                     # Calculate the Q value for the current transition
-                    rewards.append((state_reward[SR_TRANS_PROB] * \
-                                    (state_reward[SR_REW_PROB] + gamma * \
-                                    new_val_table[SR_NEXT_STATE])))
+                    transition_prob, new_state, rew_prob, info = state_reward
+                    rewards.append((transition_prob * (rew_prob + \
+                                    gamma * new_val_table[new_state])))
                 total_q_val = np.sum(rewards)
                 q_val.append(total_q_val)
 
@@ -59,14 +65,17 @@ def val_iter(gamma, environ_name):
     return val_table
 
 
-def find_best_policy(gamma, val_table, environ_name):
+def find_best_policy(map, gamma, val_table, environ_name):
     """Use the value table to find the best policy
 
     :param gamma: Discount factor from 0 to 1
     :param val_table: The table to search
     :return: The best policy found from the value table
     """
-    environ = gym.make(environ_name)
+    # environ = gym.make(environ_name)
+    environ = gym.make(environ_name,
+                       desc=map,
+                       is_slippery=True)
     no_of_states = environ.observation_space.n
     no_of_actions = environ.action_space.n
     best_policy = np.zeros(no_of_states)
@@ -89,8 +98,12 @@ def find_best_policy(gamma, val_table, environ_name):
 
 if __name__ == '__main__':
     tic = time.perf_counter()
-    opt_pol = find_best_policy(GAMMA,
-                               val_iter(GAMMA, FROZEN_LAKE),
+    ## Generate a 10x10 map with 0.7 probility tile is slippery.
+    rand_map_16 = generate_random_map(size=15, p=0.7)
+    pols = val_iter(rand_map_16, GAMMA, FROZEN_LAKE)
+    opt_pol = find_best_policy(rand_map_16,
+                               GAMMA,
+                               pols,
                                FROZEN_LAKE)
     ic(opt_pol)
     print(f'Took {time.perf_counter() - tic} seconds')

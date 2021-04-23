@@ -5,8 +5,8 @@ import numpy as np
 import time
 
 # Constants
-GAMMA = 0.9
-LIMIT = 1e-15
+GAMMA = 1.0
+LIMIT = 1e-10
 NO_OF_ITERS = 200000
 FROZEN_LAKE = 'FrozenLake-v0'
 SR_TRANS_PROB = 0
@@ -40,6 +40,7 @@ def val_iter(gamma, environ_name):
                 # ... and for each action find all the Q values.
                 for state_reward in environ.P[state][action]:
                     # Calculate the Q value for the current transition
+
                     rewards.append((state_reward[SR_TRANS_PROB] * \
                                     (state_reward[SR_REW_PROB] + gamma * \
                                     new_val_table[SR_NEXT_STATE])))
