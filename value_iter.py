@@ -2,6 +2,10 @@ from icecream import ic
 import gym
 from gym.envs.toy_text.frozen_lake import generate_random_map
 import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+from tensorboardX import SummaryWriter
 
 import time
 
@@ -14,7 +18,7 @@ SR_TRANS_PROB = 0
 SR_NEXT_STATE = 1
 SR_REW_PROB = 2
 
-def val_iter(map, gamma, environ_name):
+def val_iter(map, gamma, environ_name, iters=NO_OF_ITERS):
     """Value iteration
 
     :param map: The map to be used
@@ -28,13 +32,13 @@ def val_iter(map, gamma, environ_name):
                        is_slippery=True)
     no_of_states = environ.observation_space.n
     no_of_actions = environ.action_space.n
-    val_table = np.zeros(NO_OF_ITERS)
+    val_table = np.zeros(iters)
 
     print(f'Running value iteration for {environ_name}')
     ## Loop through the iterations set
-    for iters in range(NO_OF_ITERS):
-        if iters % 10000 == 0:
-            ic(iters)
+    for iter in range(iters):
+        if iter % 10000 == 0:
+            ic(iter)
         new_val_table = np.copy(val_table)
 
         # Loop through each of the states...
@@ -61,7 +65,7 @@ def val_iter(map, gamma, environ_name):
         total = np.sum(absolutes)
         if total <= LIMIT:
             break
-    print(f'Converged after {iters} iteraions.')
+    print(f'Converged after {iters} iterations.')
     return val_table
 
 
@@ -96,14 +100,72 @@ def find_best_policy(map, gamma, val_table, environ_name):
         best_policy[state] = np.argmax(q_table)
     return best_policy
 
+
+
+
+
 if __name__ == '__main__':
-    tic = time.perf_counter()
-    ## Generate a 10x10 map with 0.7 probility tile is slippery.
     rand_map_16 = generate_random_map(size=15, p=0.7)
-    pols = val_iter(rand_map_16, GAMMA, FROZEN_LAKE)
-    opt_pol = find_best_policy(rand_map_16,
-                               GAMMA,
-                               pols,
-                               FROZEN_LAKE)
-    ic(opt_pol)
-    print(f'Took {time.perf_counter() - tic} seconds')
+    pols = find_best_policy(rand_map_16, GAMMA, val_iter(rand_map_16, GAMMA, FROZEN_LAKE), FROZEN_LAKE)
+    # Convert policy to arrows
+    pol_as_arrows = []
+    for pol in pols:
+        if pol == 0:
+            pol_as_arrows.append('<')
+        elif pol == 1:
+            pol_as_arrows.append('V')
+        elif pol == 2:
+            pol_as_arrows.append('>')
+        elif pol == 3:
+            pol_as_arrows.append('^')
+    print('Final value iteration policy for Frozen Lake')
+    print('--------------------------------------------')
+    joined_map = ''.join(rand_map_16)
+    col_cnt = 0
+    for i in len(pol_as_arrows):
+        if joined_map[i] == 'S' or \
+           joined_map[i] == 'G' or \
+           joined_map[i] == 'H':
+            print(joined_map[i])
+        else:
+            print(pol_as_arrows[i], end='')
+        col_cnt += 1
+        if col_cnt % 15 == 0:
+            print('')
+
+
+    # times = []
+    # iters = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072]
+    # for iter in iters:
+    #     tic = time.perf_counter()
+        # Generate a 10x10 map with 0.7 probility tile is slippery.
+        # pols = val_iter(rand_map_15, GAMMA, FROZEN_LAKE, iters=iter)
+        # opt_pol = find_best_policy(rand_map_15,
+        #                            GAMMA,
+        #                            pols,
+        #                            FROZEN_LAKE)
+        # ic(opt_pol)
+        # toc = time.perf_counter()
+        # print(f'Took {toc - tic} seconds')
+        # times.append(toc - tic)
+    #
+    # df_for_vl = pd.DataFrame(data={'Iterations': iters,
+    #                                'Time(seconds)': times})
+    # ic(df_for_vl.dtypes)
+    # Do the time plot
+    # sns.lineplot(x='Iterations',
+    #              y='Time(seconds)',
+    #              data=df_for_vl,
+    #              palette='pastel')
+    # sns.set_style('dark')
+    #
+    # plt.title(f'Time vs Iterations for Frozen Lake Value Iteration', fontsize=13)
+    # plt.legend(loc='upper right')
+    # plt.show()
+    #
+    # writer = SummaryWriter(comment== 'vs. iteration')
+    # top_rew = 0.0
+    # iter = 0
+#
+
+

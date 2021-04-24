@@ -23,7 +23,7 @@ EPSILON=0.1
 SEED = 42
 STATES_TO_TEST = 640
 
-def forest_val_iter(P, R, states, sparse=False, gamma=GAMMA):
+def forest_val_iter(P, R, states, sparse=False, gamma=GAMMA, charts=False):
     """Runs the value iteration algorithm on the forest example.
 
     :param P: Transitions
@@ -43,6 +43,7 @@ def forest_val_iter(P, R, states, sparse=False, gamma=GAMMA):
                            R,
                            val_iter.policy,
                            states)
+
 
     return val_iter, achieve
 
@@ -287,9 +288,11 @@ if __name__ == '__main__':
     # print(f'Error for Q-Learning: {result.error_mean}')
     # print(f'Run Stats\n---------\n{result.run_stats[-1]}')
     # print(f'Average reward:{perf}')
-    # build_forest_iter_charts()
-    build_forest_ql_charts(0.1, 0.9, 0.05, 'epsilon')
-    build_forest_ql_charts(0, 0.9, 0.02, 'alpha')
-    build_forest_ql_charts(0, 1.0, 0.02, 'epsilon_decay')
-    build_forest_ql_charts(0, 1.0, 0.02, 'gamma')
-    # build_forest_ql_charts(0, 1.0, 0.02, 'iterations')
+
+
+    build_forest_iter_charts()
+
+    # build_forest_ql_charts(0.1, 0.9, 0.05, 'epsilon')
+    # build_forest_ql_charts(0, 0.9, 0.02, 'alpha')
+    # build_forest_ql_charts(0, 1.0, 0.02, 'epsilon_decay')
+    # build_forest_ql_charts(0, 1.0, 0.02, 'gamma')
