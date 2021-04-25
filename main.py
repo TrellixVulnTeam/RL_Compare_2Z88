@@ -9,16 +9,18 @@ from tensorboardX import SummaryWriter
 
 import time
 import random
+import pickle
 
 # Constants
 GAMMA = 0.99
-# LIMIT = 1e-5
-LIMIT = 0.3
+LIMIT = 1e-10
+# LIMIT = 0.3
 NO_OF_ITERS = 200000
 POL_LIMIT = 1e-10
 POL_LIMIT = 0.3
+CHECK_COUNT = 1000
+STEPS = 10000
 FROZEN_LAKE = 'FrozenLake-v0'
-BLACKJACK = 'Blackjack-v0'
 
 ### Value Iteration
 SR_TRANS_PROB = 0
@@ -35,7 +37,7 @@ BOTTOM_EXPLORE_RATE = 0.01
 EXPLORE_RATE = 1
 
 ############# VALUE ITERATION #####################
-def val_iter(map, gamma, environ_name, iters=NO_OF_ITERS):
+def val_iter(the_map, gamma, environ_name, iters=NO_OF_ITERS):
     """Value iteration
 
     :param map: The map to be used
@@ -45,7 +47,7 @@ def val_iter(map, gamma, environ_name, iters=NO_OF_ITERS):
     """
 
     environ = gym.make(environ_name,
-                       desc=map,
+                       desc=the_map,
                        is_slippery=True)
     no_of_states = environ.observation_space.n
     no_of_actions = environ.action_space.n
@@ -88,7 +90,7 @@ def val_iter(map, gamma, environ_name, iters=NO_OF_ITERS):
     return val_table
 
 
-def find_best_policy(map, gamma, val_table, environ_name):
+def find_best_policy(the_map, gamma, val_table, environ_name):
     """Use the value table to find the best policy
 
     :param gamma: Discount factor from 0 to 1
@@ -97,7 +99,7 @@ def find_best_policy(map, gamma, val_table, environ_name):
     """
     # environ = gym.make(environ_name)
     environ = gym.make(environ_name,
-                       desc=map,
+                       desc=the_map,
                        is_slippery=True)
     no_of_states = environ.observation_space.n
     no_of_actions = environ.action_space.n
@@ -156,9 +158,9 @@ def find_pol(environ, val_table, gamma = 1.0):
         pol[state] = np.argmax(qtable)
     return pol
 
-def pol_iter(map, environ_name, gamma = 1.0, iters = NO_OF_ITERS):
+def pol_iter(the_map, environ_name, gamma = 1.0, iters = NO_OF_ITERS):
     environ = gym.make(environ_name,
-                       desc=map,
+                       desc=the_map,
                        is_slippery=True)
     no_of_states = environ.observation_space.n
     no_of_actions = environ.action_space.n
@@ -175,7 +177,7 @@ def pol_iter(map, environ_name, gamma = 1.0, iters = NO_OF_ITERS):
 
 
 #############  Q-LEARNING #####################
-def q_learning(gamma, learn_rate, environ_name):
+def q_learning(the_map, gamma, learn_rate, environ_name):
     """Apply the Q-learning algorithm to the given Open AI Gym environment.
 
     :param gamma: Discount factor from 0 to 1
@@ -184,7 +186,10 @@ def q_learning(gamma, learn_rate, environ_name):
     :return: The q table created.
     """
 
-    environ = gym.make(environ_name)
+    environ =gym.make(environ_name,
+                       desc=the_map,
+                       is_slippery=True)
+    # environ = gym.make(environ_name)
     no_of_states = environ.observation_space.n
     no_of_actions = environ.action_space.n
     q_table = np.zeros((no_of_states, no_of_actions))
@@ -210,7 +215,7 @@ def q_learning(gamma, learn_rate, environ_name):
 
             # ... then update the Q-table
             q_table[state, action] = q_table[state, action] * (1 - LEARN_RATE) + \
-                                     LEARN_RATE * (reward + gamma *
+                                     learn_rate * (reward + gamma *
                                                    np.max(q_table[next_state, :]))
             curr_episode_rew += reward
             state = next_state
@@ -222,7 +227,7 @@ def q_learning(gamma, learn_rate, environ_name):
                    np.exp(-EXPLORE_DECAY * episode)
     total_rewards.append(curr_episode_rew)
 
-    return q_table
+    return q_table, total_rewards
 
 def out_map(map, pols, alg_name):
     # Convert policy to arrows
@@ -254,138 +259,51 @@ def out_map(map, pols, alg_name):
         if col_cnt % 15 == 0:
             print('')
 
+def check_policy(the_map, environ_name, pol):
+    environ=gym.make(environ_name,
+                     desc=the_map,
+                     is_slippery=True)
+    win_cnt = 0
+    for i in range(CHECK_COUNT):
+        st = environ.reset()
+        for t in range(STEPS):
+            st, rew, finished, _ = environ.step(pol[st])
+            if finished:
+                if rew:
+                    win_cnt = win_cnt + 1
+                break
+    print(f'Succeeded {win_cnt} times in a thousand')
+    environ.close()
+    return win_cnt
+
+
+def build_map(size=15, prob=0.5):
+    rand_map_16 = generate_random_map(size=size, p=prob)
+    with open('map.txt', 'wb') as filehandle:
+        # store the data as binary data stream
+        pickle.dump(rand_map_16, filehandle)
+
 
 if __name__ == '__main__':
-
-    # Do value iteration
-    rand_map_16 = generate_random_map(size=15, p=0.7)
-    # pol = find_best_policy(rand_map_16, GAMMA, val_iter(rand_map_16, GAMMA, FROZEN_LAKE), FROZEN_LAKE)
-    # out_map(rand_map_16, pol, 'Value Iteration')
-
-    # Do policy iteration
-    # pol = pol_iter(rand_map_16, FROZEN_LAKE, GAMMA, NO_OF_ITERS)
+    # build_map(14, 0.9)
+    # print('Generated map')
+    # Open the generated map
+    with open('map.txt', 'rb') as filehandle:
+        rand_map_16 = pickle.load(filehandle)
+    print('Map opened')
+    # pol = q_learning(rand_map_16, GAMMA, 0.1, FROZEN_LAKE)
     # out_map(rand_map_16, pol, 'Policy Iteration')
-
-
-    ####### CHARTS FOR VALUE ITERATION ########
-    # Iterations vs Time plot for value iteration
-    times = []
-    iters = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 1000000]
-    for iter in iters:
-        tic = time.perf_counter()
-        # Generate a 10x10 map with 0.7 probility tile is slippery.
-        pols = val_iter(rand_map_16, GAMMA, FROZEN_LAKE, iters=iter)
-        opt_pol = find_best_policy(rand_map_16,
-                                   GAMMA,
-                                   pols,
-                                   FROZEN_LAKE)
-        # ic(opt_pol)
-        toc = time.perf_counter()
-        print(f'Took {toc - tic} seconds')
-        times.append(toc - tic)
-
-    df_for_vl = pd.DataFrame(data={'Iterations': iters,
-                                   'Time(seconds)': times})
-    ic(df_for_vl.dtypes)
-    # Do the time plot
-    sns.lineplot(x='Iterations',
-                 y='Time(seconds)',
-                 data=df_for_vl,
-                 palette='pastel')
-    sns.set_style('dark')
-
-    plt.title(f'Time vs Iterations for Frozen Lake Value Iteration', fontsize=13)
-    plt.legend(loc='upper right')
-    plt.show()
-    plt.savefig('outputs/fl_vi_iter_time.png')
-
-
-    # Gammas vs Time plot for value iteration
-    times = []
-    # iters = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 1000000]
-    gammas = np.arange(0.05, 1.0, 0.05)
-    for i in gammas:
-        tic = time.perf_counter()
-        pols = val_iter(rand_map_16, i, FROZEN_LAKE, iters=NO_OF_ITERS)
-        opt_pol = find_best_policy(rand_map_16,
-                                   i,
-                                   pols,
-                                   FROZEN_LAKE)
-        # ic(opt_pol)
-        toc = time.perf_counter()
-        print(f'Took {toc - tic} seconds')
-        times.append(toc - tic)
-
-    df_for_vl = pd.DataFrame(data={'Discounts': gammas,
-                                   'Time(seconds)': times})
-    ic(df_for_vl.dtypes)
-    # Do the time plot
-    sns.lineplot(x='Discounts',
-                 y='Time(seconds)',
-                 data=df_for_vl,
-                 palette='pastel')
-    sns.set_style('dark')
-
-    plt.title(f'Time vs Discounts for Frozen Lake Value Iteration', fontsize=13)
-    plt.legend(loc='upper right')
-    plt.show()
-    plt.savefig('outputs/fl_vi_gamma_time.png')
-
-
-    ####### CHARTS FOR POLICY ITERATION ########
-    # Iterations vs Time plot for policy iteration
-    times = []
-    iters = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 1000000]
-    for iter in iters:
-        tic = time.perf_counter()
-        pol = pol_iter(rand_map_16, FROZEN_LAKE, GAMMA, iters=iter)
-        # ic(opt_pol)
-        toc = time.perf_counter()
-        print(f'Took {toc - tic} seconds')
-        times.append(toc - tic)
-
-    df_for_vl = pd.DataFrame(data={'Iterations': iters,
-                                   'Time(seconds)': times})
-    ic(df_for_vl.dtypes)
-    # Do the time plot
-    sns.lineplot(x='Iterations',
-                 y='Time(seconds)',
-                 data=df_for_vl,
-                 palette='pastel')
-    sns.set_style('dark')
-
-    plt.title(f'Time vs Iterations for Frozen Lake Policy Iteration', fontsize=13)
-    # plt.legend(loc='upper right')
-    plt.show()
-    plt.savefig('outputs/fl_pi_iters_time.png')
-
-
-    # Gammas vs Time plot for policy iteration
-    times = []
-    # iters = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 1000000]
-    gammas = np.arange(0.05, 1.0, 0.05)
-    for i in gammas:
-        tic = time.perf_counter()
-        pol = pol_iter(rand_map_16, FROZEN_LAKE, i, NO_OF_ITERS)
-        # ic(opt_pol)
-        toc = time.perf_counter()
-        print(f'Took {toc - tic} seconds')
-        times.append(toc - tic)
-
-    df_for_vl = pd.DataFrame(data={'Discounts': gammas,
-                                   'Time(seconds)': times})
-    ic(df_for_vl.dtypes)
-    # Do the time plot
-    sns.lineplot(x='Discounts',
-                 y='Time(seconds)',
-                 data=df_for_vl,
-                 palette='pastel')
-    sns.set_style('dark')
-
-    plt.title(f'Time vs Discounts for Frozen Lake Policy Iteration', fontsize=13)
-    # plt.legend(loc='upper right')
-    plt.show()
-    plt.savefig('outputs/fl_pi_gamma_time.png')
+    pol_val = find_best_policy(rand_map_16, GAMMA, val_iter(rand_map_16, GAMMA, FROZEN_LAKE), FROZEN_LAKE)
+    out_map(rand_map_16, pol_val, 'Value Iteration')
+    # Do policy iteration
+    pol_pol = pol_iter(rand_map_16, FROZEN_LAKE, GAMMA, NO_OF_ITERS)
+    out_map(rand_map_16, pol_pol, 'Policy Iteration')
+    # print(f'Evaluation score = {evaluate_policy(rand_map_16, pol, GAMMA, FROZEN_LAKE, n=1000000)}')
+    print('Generated policy.  Testing for vi ..')
+    result = check_policy(rand_map_16, FROZEN_LAKE, pol_val)
+    print('Testing for pi ..')
+    result = check_policy(rand_map_16, FROZEN_LAKE, pol_pol)
+    # pol = pol_iter(rand_map_16, FROZEN_LAKE, GAMMA, NO_OF_ITERS)
 
 
     # writer = SummaryWriter(comment== 'vs. iteration')
@@ -416,3 +334,191 @@ if __name__ == '__main__':
     #
     # print(f'Took {time.perf_counter() - tic} seconds')
 
+
+
+    ####### CHARTS FOR VALUE ITERATION ########
+    # Iterations vs Time plot for value iteration
+    times = []
+    win_cnt = []
+    iters = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 1000000]
+    for iter in iters:
+        tic = time.perf_counter()
+        # Generate a 10x10 map with 0.7 probility tile is slippery.
+        pols = val_iter(rand_map_16, GAMMA, FROZEN_LAKE, iters=iter)
+        opt_pol = find_best_policy(rand_map_16,
+                                   GAMMA,
+                                   pols,
+                                   FROZEN_LAKE)
+        # ic(opt_pol)
+        toc = time.perf_counter()
+        print(f'Took {toc - tic} seconds')
+        times.append(toc - tic)
+        win_cnt.append(check_policy(rand_map_16, FROZEN_LAKE, opt_pol))
+
+    df_for_vl = pd.DataFrame(data={'Iterations': iters,
+                                   'Wins per thousand runs': win_cnt,
+                                   'Time(seconds)': times})
+    # ic(df_for_vl.dtypes)
+    # Do the time plot
+    sns.lineplot(x='Iterations',
+                 y='Time(seconds)',
+                 data=df_for_vl,
+                 palette='pastel')
+    sns.set_style('dark')
+
+    plt.title(f'Time vs Iterations for Frozen Lake Value Iteration', fontsize=13)
+    plt.legend(loc='upper right')
+    plt.show()
+    plt.savefig('outputs/fl_vi_iter_time.png')
+
+    sns.lineplot(y='Wins per thousand runs',
+                 x='Iterations',
+                 data=df_for_vl,
+                 palette='pastel')
+    sns.set_style('dark')
+
+    plt.title(f'Wins vs Iterations for Frozen Lake Value Iteration', fontsize=13)
+    plt.legend(loc='upper right')
+    plt.show()
+    plt.savefig('outputs/fl_vi_iter_wins.png')
+
+
+    # Gammas vs Time plot for value iteration
+    times = []
+    win_cnt = []
+    # iters = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 1000000]
+    gammas = np.arange(0.05, 1.0, 0.05)
+    for i in gammas:
+        tic = time.perf_counter()
+        pols = val_iter(rand_map_16, i, FROZEN_LAKE, iters=NO_OF_ITERS)
+        opt_pol = find_best_policy(rand_map_16,
+                                   i,
+                                   pols,
+                                   FROZEN_LAKE)
+        # ic(opt_pol)
+        toc = time.perf_counter()
+        print(f'Took {toc - tic} seconds')
+        times.append(toc - tic)
+        win_cnt.append(check_policy(rand_map_16, FROZEN_LAKE, opt_pol))
+
+    df_for_vl = pd.DataFrame(data={'Discounts': gammas,
+                                   'Wins per thousand runs': win_cnt,
+                                   'Time(seconds)': times})
+    # ic(df_for_vl.dtypes)
+    # Do the time plot
+    sns.lineplot(x='Discounts',
+                 y='Time(seconds)',
+                 data=df_for_vl,
+                 palette='pastel')
+    sns.set_style('dark')
+
+    plt.title(f'Time vs Discounts for Frozen Lake Value Iteration', fontsize=13)
+    plt.legend(loc='upper right')
+    plt.show()
+    plt.savefig('outputs/fl_vi_gamma_time.png')
+
+    # Do the wins plot
+    # Rew vs discount
+    sns.lineplot(x='Wins per thousand runs',
+                 y='Discounts',
+                 data=df_for_vl,
+                 palette='pastel')
+    sns.set_style('dark')
+
+    plt.title(f'Discounts vs Wins for Frozen Lake Value Iteration', fontsize=13)
+    plt.legend(loc='upper right')
+    plt.show()
+    plt.savefig('outputs/fl_vi_wins_discount.png')
+
+
+
+
+
+    ####### CHARTS FOR POLICY ITERATION ########
+    # Iterations vs Time plot for policy iteration
+    times = []
+    win_cnt = []
+    iters = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 1000000]
+    for iter in iters:
+        tic = time.perf_counter()
+        pol = pol_iter(rand_map_16, FROZEN_LAKE, GAMMA, iters=iter)
+        # ic(opt_pol)
+        toc = time.perf_counter()
+        print(f'Took {toc - tic} seconds')
+        times.append(toc - tic)
+        win_cnt.append(check_policy(rand_map_16, FROZEN_LAKE, opt_pol))
+
+    df_for_vl = pd.DataFrame(data={'Iterations': iters,
+                                   'Wins per thousand runs': win_cnt,
+                                   'Time(seconds)': times})
+    ic(df_for_vl.dtypes)
+    # Do the time plot
+    sns.lineplot(x='Iterations',
+                 y='Time(seconds)',
+                 data=df_for_vl,
+                 palette='pastel')
+    sns.set_style('dark')
+
+    plt.title(f'Time vs Iterations for Frozen Lake Policy Iteration', fontsize=13)
+    # plt.legend(loc='upper right')
+    plt.show()
+    plt.savefig('outputs/fl_pi_iters_time.png')
+
+    sns.lineplot(y='Wins per thousand runs',
+                 x='Iterations',
+                 data=df_for_vl,
+                 palette='pastel')
+    sns.set_style('dark')
+
+    plt.title(f'Wins vs Iterations for Frozen Lake Policy Iteration', fontsize=13)
+    plt.legend(loc='upper right')
+    plt.show()
+    plt.savefig('outputs/fl_pi_iter_wins.png')
+
+
+
+
+
+
+    # Gammas vs Time plot for policy iteration
+    times = []
+    win_cnt = []
+    # iters = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 1000000]
+    gammas = np.arange(0.05, 1.0, 0.05)
+    for i in gammas:
+        tic = time.perf_counter()
+        pol = pol_iter(rand_map_16, FROZEN_LAKE, i, NO_OF_ITERS)
+        # ic(opt_pol)
+        toc = time.perf_counter()
+        print(f'Took {toc - tic} seconds')
+        times.append(toc - tic)
+        win_cnt.append(check_policy(rand_map_16, FROZEN_LAKE, opt_pol))
+
+    df_for_vl = pd.DataFrame(data={'Discounts': gammas,
+                                   'Wins per thousand runs': win_cnt,
+                                   'Time(seconds)': times})
+    ic(df_for_vl.dtypes)
+    # Do the time plot
+    sns.lineplot(x='Discounts',
+                 y='Time(seconds)',
+                 data=df_for_vl,
+                 palette='pastel')
+    sns.set_style('dark')
+
+    plt.title(f'Time vs Discounts for Frozen Lake Policy Iteration', fontsize=13)
+    # plt.legend(loc='upper right')
+    plt.show()
+    plt.savefig('outputs/fl_pi_gamma_time.png')
+
+    # Do the wins plot
+    # Rew vs discount
+    sns.lineplot(x='Wins per thousand runs',
+                 y='Discounts',
+                 data=df_for_vl,
+                 palette='pastel')
+    sns.set_style('dark')
+
+    plt.title(f'Discounts vs Wins for Frozen Lake Policy Iteration', fontsize=13)
+    plt.legend(loc='upper right')
+    plt.show()
+    plt.savefig('outputs/fl_vi_wins_discount.png')

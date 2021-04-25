@@ -73,6 +73,8 @@ def value_iteration(P, R):
     vi.run()
     end = timer()
     print(end - start)
+    print('VI Policy')
+    print(vi.policy)
     return vi
 
 
@@ -125,5 +127,6 @@ def get_performance_discrete(policy, P, R, num_trials=100):
     return np.mean(results)
 
 if __name__ == '__main__':
+    # vi = value_iteration(P, R)
     run()
     iteration_plots()
