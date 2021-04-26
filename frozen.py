@@ -5,7 +5,6 @@ from gym.envs.toy_text.frozen_lake import generate_random_map
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from tensorboardX import SummaryWriter
 
 import time
 import random
@@ -35,6 +34,10 @@ EXPLORE_DECAY = 0.001
 TOP_EXPLORE_RATE = 1
 BOTTOM_EXPLORE_RATE = 0.01
 EXPLORE_RATE = 1
+
+GOAL_FOUND = 1
+GOAL_NOT_FOUND = -1
+MAX_DECAY_COMPARE = 0.01
 
 ############# VALUE ITERATION #####################
 def val_iter(the_map, gamma, environ_name, iters=NO_OF_ITERS):
@@ -176,58 +179,6 @@ def pol_iter(the_map, environ_name, gamma = 1.0, iters = NO_OF_ITERS):
     return new_pol
 
 
-#############  Q-LEARNING #####################
-def q_learning(the_map, gamma, learn_rate, environ_name):
-    """Apply the Q-learning algorithm to the given Open AI Gym environment.
-
-    :param gamma: Discount factor from 0 to 1
-    :param learn_rate:
-    :param environ_name: Name used in Open AI gym
-    :return: The q table created.
-    """
-
-    environ =gym.make(environ_name,
-                       desc=the_map,
-                       is_slippery=True)
-    # environ = gym.make(environ_name)
-    no_of_states = environ.observation_space.n
-    no_of_actions = environ.action_space.n
-    q_table = np.zeros((no_of_states, no_of_actions))
-    total_rewards = []
-    print(f'Starting Q-Learning for {environ_name}')
-
-    ## Run through the speicified number of episodes...
-    for episode in range(EPISODE_COUNT):
-        complete = False
-        state = environ.reset()
-        curr_episode_rew = 0
-
-        # ... and for each episode, run through the given number of steps...
-        for step in range(MAX_STEPS_FOR_EPISODE):
-            # ... first work through the exploitation/exploration trade-off...
-            if random.uniform(0, 1) > EXPLORE_RATE:
-                action = np.argmax((q_table[state, :]))
-            else:
-                action = environ.action_space.sample()
-
-            # ... do the step itself...
-            next_state, reward, complete, _ = environ.step(action)
-
-            # ... then update the Q-table
-            q_table[state, action] = q_table[state, action] * (1 - LEARN_RATE) + \
-                                     learn_rate * (reward + gamma *
-                                                   np.max(q_table[next_state, :]))
-            curr_episode_rew += reward
-            state = next_state
-            if complete:
-                break
-
-
-    explore_rate = BOTTOM_EXPLORE_RATE + (TOP_EXPLORE_RATE - BOTTOM_EXPLORE_RATE) * \
-                   np.exp(-EXPLORE_DECAY * episode)
-    total_rewards.append(curr_episode_rew)
-
-    return q_table, total_rewards
 
 def out_map(map, pols, alg_name):
     # Convert policy to arrows
@@ -283,58 +234,101 @@ def build_map(size=15, prob=0.5):
         # store the data as binary data stream
         pickle.dump(rand_map_16, filehandle)
 
+def q_learning(environ_name, the_map,
+               epsilon=1.0,
+               epsilon_decay=0.99,
+               alpha_decay=0.99,
+               alpha=0.99,
+               gamma=0.9):
+    """Apply the Q-learning algorithm to the given Open AI Gym environment.
+
+    :param gamma: Discount factor from 0 to 1
+    :param learn_rate:
+    :param environ_name: Name used in Open AI gym
+    :return: The q table created.
+    """
+    print('Starting Q-learning for Frozen Lake')
+    environ = gym.make(environ_name,
+                       desc=the_map,
+                       is_slippery=True)
+    no_of_states = environ.observation_space.n
+    no_of_actions = environ.action_space.n
+
+    games = []
+
+    q_table = np.zeros((no_of_states, no_of_actions))
+    rews = []
+    iterations = []
+    opt_pol = [0] * no_of_states
+    episodes = 10000
+    environ = environ.unwrapped
+
+    Q_vals = []
+    for episode in range(episodes):
+        state = environ.reset()
+        t_rew = 0
+        done = False
+
+        Q_vals.append(np.sum(q_table[0, :]))
+        max_steps = 1000000
+        for k in range(max_steps):
+            if done == True:
+                break
+            curr = state
+            if np.random.rand() < (epsilon):
+                action = np.argmax(q_table[curr, :])
+            else:
+                action = environ.action_space.sample()
+
+            new_state, rew, complete, _ = environ.step(action)
+            t_rew = t_rew + rew
+            q_table[curr, action] += alpha * (
+                    rew + gamma * np.max(q_table[state, :]) - q_table[curr, action])
+        # Do the decaying
+        alpha = max(MAX_DECAY_COMPARE, alpha * alpha_decay )
+        epsilon = max(MAX_DECAY_COMPARE, epsilon * epsilon_decay)
+        rews.append(t_rew)
+        iterations.append(k)
+
+    for k in range(no_of_states):
+        opt_pol[k] = np.argmax(q_table[k, :])
+
+    games.append(run_eps(environ, 0, opt_pol))
+
+    Q_vals = np.array(Q_vals)
+    Q_vals /= 1000
+
+    print(f'optimal policy = {opt_pol}')
+
+    return opt_pol, np.mean(games)
+
+def run_eps(environ, pol, no_games=1000):
+    total_reward = 0
+    state = environ.reset()
+    for i in range(no_games):
+        complete = False
+        while not complete:
+            new_state, rew, complete, info = environ.step(pol[state])
+            state = new_state
+            total_reward= total_reward + total_reward
+            if complete == True:
+                state = environ.reset()
+    return total_reward
+
 
 if __name__ == '__main__':
-    # build_map(14, 0.9)
-    # print('Generated map')
-    # Open the generated map
     with open('map.txt', 'rb') as filehandle:
         rand_map_16 = pickle.load(filehandle)
     print('Map opened')
-    # pol = q_learning(rand_map_16, GAMMA, 0.1, FROZEN_LAKE)
-    # out_map(rand_map_16, pol, 'Policy Iteration')
-    pol_val = find_best_policy(rand_map_16, GAMMA, val_iter(rand_map_16, GAMMA, FROZEN_LAKE), FROZEN_LAKE)
-    out_map(rand_map_16, pol_val, 'Value Iteration')
+    # pol, rew = q_learning(FROZEN_LAKE, rand_map_16)
+    # print(f'Final rewards = {rew}')
+    # out_map(rand_map_16, pol, 'Q-learning')
+    # 
+    # pol_val = find_best_policy(rand_map_16, GAMMA, val_iter(rand_map_16, GAMMA, FROZEN_LAKE), FROZEN_LAKE)
+    # out_map(rand_map_16, pol_val, 'Value Iteration')
     # Do policy iteration
-    pol_pol = pol_iter(rand_map_16, FROZEN_LAKE, GAMMA, NO_OF_ITERS)
-    out_map(rand_map_16, pol_pol, 'Policy Iteration')
-    # print(f'Evaluation score = {evaluate_policy(rand_map_16, pol, GAMMA, FROZEN_LAKE, n=1000000)}')
-    print('Generated policy.  Testing for vi ..')
-    result = check_policy(rand_map_16, FROZEN_LAKE, pol_val)
-    print('Testing for pi ..')
-    result = check_policy(rand_map_16, FROZEN_LAKE, pol_pol)
-    # pol = pol_iter(rand_map_16, FROZEN_LAKE, GAMMA, NO_OF_ITERS)
-
-
-    # writer = SummaryWriter(comment== 'vs. iteration')
-    # top_rew = 0.0
-    # iter = 0
-    # env_choice, alg_choice = '', ''
-    # # Ask user which environment/algorithm
-    # env_choice = input('1. Frozen Lake, 2. nChain or 3. Run Everything')
-    # if env_choice != '3':
-    #     alg_choice = input('1. Value, 2. Policy or 3. Q-learning')
-    #
-    # tic = time.perf_counter()
-    # if env_choice == '1':
-    #     if alg_choice == '1':
-    #
-    #         opt_pol = find_best_policy(GAMMA,
-    #                                    val_iter(GAMMA, FROZEN_LAKE),
-    #                                    FROZEN_LAKE)
-    #         print(f'Optimum policy for frozen lake...\n\n{opt_pol}')
-    #     elif alg_choice == '2':
-    #         print('Not yet implemented')
-    #     elif alg_choice == '3':
-    #         print(f'Q-table\n\n{q_learning(GAMMA, LEARN_RATE, FROZEN_LAKE)}')
-    #
-    # elif env_choice == '2':
-    #     if alg_choice == '3':
-    #         print(f'Q-table\n\n{q_learning(GAMMA, LEARN_RATE, BLACKJACK)}')
-    #
-    # print(f'Took {time.perf_counter() - tic} seconds')
-
-
+    # pol_pol = pol_iter(rand_map_16, FROZEN_LAKE, GAMMA, NO_OF_ITERS)
+    # out_map(rand_map_16, pol_pol, 'Policy Iteration')
 
     ####### CHARTS FOR VALUE ITERATION ########
     # Iterations vs Time plot for value iteration
@@ -343,7 +337,6 @@ if __name__ == '__main__':
     iters = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 1000000]
     for iter in iters:
         tic = time.perf_counter()
-        # Generate a 10x10 map with 0.7 probility tile is slippery.
         pols = val_iter(rand_map_16, GAMMA, FROZEN_LAKE, iters=iter)
         opt_pol = find_best_policy(rand_map_16,
                                    GAMMA,
@@ -358,7 +351,6 @@ if __name__ == '__main__':
     df_for_vl = pd.DataFrame(data={'Iterations': iters,
                                    'Wins per thousand runs': win_cnt,
                                    'Time(seconds)': times})
-    # ic(df_for_vl.dtypes)
     # Do the time plot
     sns.lineplot(x='Iterations',
                  y='Time(seconds)',
@@ -381,7 +373,6 @@ if __name__ == '__main__':
     plt.legend(loc='upper right')
     plt.show()
     plt.savefig('outputs/fl_vi_iter_wins.png')
-
 
     # Gammas vs Time plot for value iteration
     times = []
@@ -430,10 +421,6 @@ if __name__ == '__main__':
     plt.show()
     plt.savefig('outputs/fl_vi_wins_discount.png')
 
-
-
-
-
     ####### CHARTS FOR POLICY ITERATION ########
     # Iterations vs Time plot for policy iteration
     times = []
@@ -474,11 +461,6 @@ if __name__ == '__main__':
     plt.legend(loc='upper right')
     plt.show()
     plt.savefig('outputs/fl_pi_iter_wins.png')
-
-
-
-
-
 
     # Gammas vs Time plot for policy iteration
     times = []
@@ -522,3 +504,174 @@ if __name__ == '__main__':
     plt.legend(loc='upper right')
     plt.show()
     plt.savefig('outputs/fl_vi_wins_discount.png')
+
+    # Epsilon vs Time plot for ql
+    times = []
+    win_cnt = []
+    # iters = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 1000000]
+    epsilon = np.arange(0.05, 1.0, 0.05)
+    for i in epsilon:
+        tic = time.perf_counter()
+        pol, wins = q_learning(FROZEN_LAKE, rand_map_16, epsilon=i)
+        # pol = pol_iter(rand_map_16, FROZEN_LAKE, i, NO_OF_ITERS)
+        # ic(opt_pol)
+        toc = time.perf_counter()
+        print(f'Took {toc - tic} seconds')
+        times.append(toc - tic)
+        win_cnt.append(wins) #check_policy(rand_map_16, FROZEN_LAKE, opt_pol))
+
+    df_for_vl = pd.DataFrame(data={'Epsilon': epsilon,
+                                   'Wins per thousand runs': win_cnt,
+                                   'Time(seconds)': times})
+    ic(df_for_vl.dtypes)
+    # Do the time plot
+    sns.lineplot(x='Epsilon',
+                 y='Time(seconds)',
+                 data=df_for_vl,
+                 palette='pastel')
+    sns.set_style('dark')
+
+    plt.title(f'Time vs Epsilon for Frozen Lake Q-Learning', fontsize=13)
+    # plt.legend(loc='upper right')
+    plt.show()
+    # plt.savefig('outputs/fl_pi_gamma_time.png')
+
+    # Do the wins plot
+    # Rew vs time
+    sns.lineplot(x='Epsilon',
+                 y='Wins per thousand runs',
+                 data=df_for_vl,
+                 palette='pastel')
+    sns.set_style('dark')
+    plt.title(f'Wins vs Epsilon for Frozen Lake Q-Learning', fontsize=13)
+    # plt.legend(loc='upper right')
+    plt.show()
+
+
+
+    # Epsilon Decay vs Time plot for ql
+    times = []
+    win_cnt = []
+    # iters = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 1000000]
+    epsilon_decay = np.arange(0.05, 1.0, 0.05)
+    for i in epsilon:
+        tic = time.perf_counter()
+        pol, wins = q_learning(FROZEN_LAKE, rand_map_16, epsilon_decay=i)
+        # pol = pol_iter(rand_map_16, FROZEN_LAKE, i, NO_OF_ITERS)
+        # ic(opt_pol)
+        toc = time.perf_counter()
+        print(f'Took {toc - tic} seconds')
+        times.append(toc - tic)
+        win_cnt.append(wins) #check_policy(rand_map_16, FROZEN_LAKE, opt_pol))
+
+    df_for_vl = pd.DataFrame(data={'Epsilon Decay': epsilon_decay,
+                                   'Wins per thousand runs': win_cnt,
+                                   'Time(seconds)': times})
+    ic(df_for_vl.dtypes)
+    # Do the time plot
+    sns.lineplot(x='Epsilon Decay',
+                 y='Time(seconds)',
+                 data=df_for_vl,
+                 palette='pastel')
+    sns.set_style('dark')
+
+    plt.title(f'Time vs Epsilon Decay for Frozen Lake Q-Learning', fontsize=13)
+    plt.show()
+
+    # Do the wins plot
+    # Rew vs time
+    sns.lineplot(x='Epsilon Decay',
+                 y='Wins per thousand runs',
+                 data=df_for_vl,
+                 palette='pastel')
+    sns.set_style('dark')
+    plt.title(f'Wins vs Epsilon Decay for Frozen Lake Q-Learning', fontsize=13)
+    plt.show()
+
+
+
+    # Alpha vs Time plot for ql
+    times = []
+    win_cnt = []
+    # iters = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 1000000]
+    alpha = np.arange(0.05, 1.0, 0.05)
+    for i in epsilon:
+        tic = time.perf_counter()
+        pol, wins = q_learning(FROZEN_LAKE, rand_map_16, alpha=i)
+        # pol = pol_iter(rand_map_16, FROZEN_LAKE, i, NO_OF_ITERS)
+        # ic(opt_pol)
+        toc = time.perf_counter()
+        print(f'Took {toc - tic} seconds')
+        times.append(toc - tic)
+        win_cnt.append(wins) #check_policy(rand_map_16, FROZEN_LAKE, opt_pol))
+
+    df_for_vl = pd.DataFrame(data={'Alpha': alpha,
+                                   'Wins per thousand runs': win_cnt,
+                                   'Time(seconds)': times})
+    ic(df_for_vl.dtypes)
+    # Do the time plot
+    sns.lineplot(x='Alpha',
+                 y='Time(seconds)',
+                 data=df_for_vl,
+                 palette='pastel')
+    sns.set_style('dark')
+
+    plt.title(f'Time vs Alpha for Frozen Lake Q-Learning', fontsize=13)
+    # plt.legend(loc='upper right')
+    plt.show()
+    # plt.savefig('outputs/fl_pi_gamma_time.png')
+
+    # Do the wins plot
+    # Rew vs time
+    sns.lineplot(x='Alpha',
+                 y='Wins per thousand runs',
+                 data=df_for_vl,
+                 palette='pastel')
+    sns.set_style('dark')
+    plt.title(f'Wins vs Alpha for Frozen Lake Q-Learning', fontsize=13)
+    # plt.legend(loc='upper right')
+    plt.show()
+
+
+    # Gamma vs Time plot for ql
+    times = []
+    win_cnt = []
+    # iters = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 1000000]
+    gamma = np.arange(0.05, 1.0, 0.05)
+    for i in epsilon:
+        tic = time.perf_counter()
+        pol, wins = q_learning(FROZEN_LAKE, rand_map_16, gamma=i)
+        # pol = pol_iter(rand_map_16, FROZEN_LAKE, i, NO_OF_ITERS)
+        # ic(opt_pol)
+        toc = time.perf_counter()
+        print(f'Took {toc - tic} seconds')
+        times.append(toc - tic)
+        win_cnt.append(wins) #check_policy(rand_map_16, FROZEN_LAKE, opt_pol))
+
+    df_for_vl = pd.DataFrame(data={'Gamma': gamma,
+                                   'Wins per thousand runs': win_cnt,
+                                   'Time(seconds)': times})
+    ic(df_for_vl.dtypes)
+    # Do the time plot
+    sns.lineplot(x='Gamma',
+                 y='Time(seconds)',
+                 data=df_for_vl,
+                 palette='pastel')
+    sns.set_style('dark')
+
+    plt.title(f'Time vs Gamma for Frozen Lake Q-Learning', fontsize=13)
+    # plt.legend(loc='upper right')
+    plt.show()
+    # plt.savefig('outputs/fl_pi_gamma_time.png')
+
+    # Do the wins plot
+    # Rew vs time
+    sns.lineplot(x='Gamma',
+                 y='Wins per thousand runs',
+                 data=df_for_vl,
+                 palette='pastel')
+    sns.set_style('dark')
+    plt.title(f'Wins vs Gamma for Frozen Lake Q-Learning', fontsize=13)
+    # plt.legend(loc='upper right')
+    plt.show()
+
