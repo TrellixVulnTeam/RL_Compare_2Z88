@@ -28,12 +28,14 @@ SR_REW_PROB = 2
 
 ### Q-learning
 LEARN_RATE = 0.1
-EPISODE_COUNT = 20000
-MAX_STEPS_FOR_EPISODE = 200
+EPISODE_COUNT = 10000
+maximum_steps_FOR_EPISODE = 200
 EXPLORE_DECAY = 0.001
 TOP_EXPLORE_RATE = 1
 BOTTOM_EXPLORE_RATE = 0.01
 EXPLORE_RATE = 1
+QL_maximum_steps = 1000000
+QL_MAX_DIV = 1000
 
 GOAL_FOUND = 1
 GOAL_NOT_FOUND = -1
@@ -242,11 +244,16 @@ def q_learning(environ_name, the_map,
                gamma=0.9):
     """Apply the Q-learning algorithm to the given Open AI Gym environment.
 
-    :param gamma: Discount factor from 0 to 1
-    :param learn_rate:
-    :param environ_name: Name used in Open AI gym
-    :return: The q table created.
+    :param environ_name:
+    :param the_map:
+    :param epsilon:
+    :param epsilon_decay:
+    :param alpha_decay:
+    :param alpha:
+    :param gamma:
+    :return:
     """
+
     print('Starting Q-learning for Frozen Lake')
     environ = gym.make(environ_name,
                        desc=the_map,
@@ -254,27 +261,28 @@ def q_learning(environ_name, the_map,
     no_of_states = environ.observation_space.n
     no_of_actions = environ.action_space.n
 
-    games = []
-
-    q_table = np.zeros((no_of_states, no_of_actions))
     rews = []
+    games = []
     iterations = []
+    q_table = np.zeros((no_of_states, no_of_actions))
     opt_pol = [0] * no_of_states
-    episodes = 10000
+    episodes = EPISODE_COUNT
     environ = environ.unwrapped
 
-    Q_vals = []
+    q_vals = []
     for episode in range(episodes):
         state = environ.reset()
         t_rew = 0
-        done = False
+        complete = False
 
-        Q_vals.append(np.sum(q_table[0, :]))
-        max_steps = 1000000
-        for k in range(max_steps):
-            if done == True:
+        q_vals.append(np.sum(q_table[0, :]))
+        maximum_steps = QL_maximum_steps
+        for k in range(maximum_steps):
+            if complete == True:
                 break
             curr = state
+
+            ## Explore
             if np.random.rand() < (epsilon):
                 action = np.argmax(q_table[curr, :])
             else:
@@ -282,27 +290,33 @@ def q_learning(environ_name, the_map,
 
             new_state, rew, complete, _ = environ.step(action)
             t_rew = t_rew + rew
+
+            ## Do the learning
             q_table[curr, action] += alpha * (
                     rew + gamma * np.max(q_table[state, :]) - q_table[curr, action])
         # Do the decaying
         alpha = max(MAX_DECAY_COMPARE, alpha * alpha_decay )
         epsilon = max(MAX_DECAY_COMPARE, epsilon * epsilon_decay)
+
         rews.append(t_rew)
         iterations.append(k)
 
+    # Finally, find the optimal policy.
     for k in range(no_of_states):
         opt_pol[k] = np.argmax(q_table[k, :])
 
     games.append(run_eps(environ, 0, opt_pol))
 
-    Q_vals = np.array(Q_vals)
-    Q_vals /= 1000
-
-    print(f'optimal policy = {opt_pol}')
-
     return opt_pol, np.mean(games)
 
 def run_eps(environ, pol, no_games=1000):
+    """ Run the environment for a particular number of games.
+
+    :param environ: the open AI gym environment
+    :param pol: The policy to run
+    :param no_games: How many games to run???
+    :return: The total reward from the game
+    """
     total_reward = 0
     state = environ.reset()
     for i in range(no_games):
